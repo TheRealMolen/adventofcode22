@@ -5,7 +5,7 @@
 // -------------------------------------------------------------------
 
 void run_day1();
-//void run_day2();
+void run_day2();
 //void run_day3();
 //void run_day4();
 //void run_day5();
@@ -37,11 +37,11 @@ int main()
     initcolours();
     srand((unsigned int)time(0));
 
-    cout << GARLAND(2) << "  advent of code 2021  " << GARLAND(2) << endl;
+    cout << GARLAND(2) << "  advent of code 2022  " << GARLAND(2) << endl;
 
 
     run_day1();
-    //run_day2();
+    run_day2();
     //run_day3();
     //run_day4();
     //run_day5();
