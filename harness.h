@@ -297,9 +297,10 @@ static inline string trim_copy(string s, const char* chars) {
 class ScopeTimer
 {
     string m_name;
-    chrono::steady_clock::time_point m_start;
+    chrono::high_resolution_clock::time_point m_start;
 
 public:
+    ScopeTimer() = delete;
     explicit ScopeTimer(const char* name) : m_name(name), m_start(chrono::high_resolution_clock::now())
     { /**/ }
     ~ScopeTimer()

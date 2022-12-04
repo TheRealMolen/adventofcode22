@@ -91,7 +91,6 @@ struct Sparkle
     COORD pos;
     int t;
 
-    Sparkle() {/**/ }
     Sparkle(COORD p) : pos(p), t(-1) {/**/ }
 
     bool tick()
@@ -148,7 +147,7 @@ int twinkleforever()
         }
     }
 
-    list<Sparkle> sparkles;
+    deque<Sparkle> sparkles;
     uint32_t frame = 0;
     for (;; ++frame)
     {
@@ -158,12 +157,12 @@ int twinkleforever()
         sparkles.push_back(newsparkle);
 
         // tick all the sparkles
-        for (auto it = sparkles.begin(); it != sparkles.end(); ++it)
+        for (auto it = sparkles.begin(); it != sparkles.end();)
         {
             if (!it->tick())
-            {
                 it = sparkles.erase(it);
-            }
+            else
+                ++it;
         }
 
         if (_kbhit())
