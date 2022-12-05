@@ -1,71 +1,3 @@
-//
-// advent of code test harness
-//
-// contains both the core TDD utilities and a bunch of utilities that make solving aoc problems in C++ easier
-// 
-// it's designed to keep running every day's tests every day to the end, so it slowly builds up cases over the month.
-// sometimes a problem's solution will be slow enough for that to be annoying, so there are helpers to skip days
-//
-//
-// --- TEST API (example uses below) ---
-//  stringlist      - basically std::vector<string> with a few helpers
-//  READ(str)       - return a _stringlist_ by splitting a string literal into lines
-//  LOAD(ID)        - return a _stringlist_ by loading a text file from "data/dayID.txt" and splitting it into lines
-//  LOADSTR(ID)     - like LOAD, but returns a std::string instead of a vector of lines
-// 
-//  test(expected, expression)
-//                  - check that _expression_ evaluates to _expected_ and print an error. used to validate an algorithm against test input
-//  gogogo(expression)
-//                  - print out _expression_. used to run a day's algorithm against the real data
-// 
-//  skip()          - moves the global "current part" forward without running any code - perhaps because you solved that day's problem in a
-//                    different sourcebase (e.g. occasionally there are challenges that are easier to solve using a graphical display than a text one)
-//                    call it twice to skip a whole day
-//  jumptoday(N)    - moves to global "current day" to _N_ immediately. because after day 20, who has time to be running days 1 thru 19 every time...
-//                   
-//
-//  nest and nonono - like _test_ and _gogogo_ but they don't run the expression (typically because it's too slow)
-//  nestD and nononoD
-//                  - like _test_ and _gogogo_ but they don't run the expression in Debug builds (typiclly because it's too slow)
-// 
-//  twinkleforever()
-//                  - have your main() return this for more festive cheer
-//
-// 
-// --- UTILITIES ---
-//  stringlist      - basically std::vector<string> with a few helpers
-//  split(str,delimiter)
-//                  - returns a _stringlist_ of the parts of string _str_ split by the _delimiter_
-//                    split("a,b,c", ",")  =>  {"a", "b", "c"}
-// 
-//  trim(str, chars=" ")
-//                  - (in-place) remove leading and trailing characters from _str_ that match any of the characters in _chars_
-//  ltrim, rtrim    - like _trim_ but only removes characters on the left or right of the string respectively
-//  trim_copy, ltrim_copy, rtrim_copy
-//                  - like the above, but return a new string with characters removed, and leave the original alone
-// 
-//  ScopeTimer      - for quick & dirty profiling, prints out how long it takes to run from the moment the object is constructed to the moment it's destructed
-//  
-// 
-// ---- FESTIVE COLOUR DECORATORS ----
-//   if you want to add to the festivities, just sprinkle some colours into cout>
-//       std::cout << RED << "o" << YELLOW << "*" << GREEN << "o" << YELLOW << "*";
-// 
-//  (you need to have called initcolours() before this point for these to work)
-// 
-// 
-// --- some examples ---
-//
-//    test(3, day1(READ("+1\n-2\n+3\n+1")));
-//    test<string>("CABDFE", day7(LOAD(7t), 6));
-//    gogogo(day1(LOAD(1)));
-//    gogogo(day5(LOADSTR(5)));
-//    skip("because it needs fancy graphics");
-//    nest(D11Point{ 232,251,12 }, day11_2(42));
-//    nonono(day11_2(4455));
-//    nononoD(day9(string("466 players; last marble is worth 7143600 points")));
-//
-
 #pragma once
 
 #include <chrono>
@@ -79,51 +11,49 @@
 #include <wincon.h>
 
 
+// --- how to use the harness ---
+//
+//test(3, day1(READ("+1\n-2\n+3\n+1")));
+//test<string>("CABDFE", day7(LOAD(7t), 6));
+//gogogo(day1(LOAD(1)));
+//gogogo(day5(LOADSTR(5)));
+//skip("because it needs fancy graphics");
+//nest(D11Point{ 232,251,12 }, day11_2(42));
+//nonono(day11_2(4455));
+//nononoD(day9(string("466 players; last marble is worth 7143600 points")));
+
+
 using namespace std;
 
 
-
+// ---- COLOUR SHIZ ----
 extern HANDLE hStdIn;
 extern HANDLE hStdOut;
 void initcolours();
 
 
-inline ostream&     RED(ostream& _Ostr)
+inline ostream& COLOUR(ostream& _Ostr, WORD code)
 {
     _Ostr.flush();
-    SetConsoleTextAttribute(hStdOut, FOREGROUND_RED | FOREGROUND_INTENSITY);
+    SetConsoleTextAttribute(hStdOut, code);
     return (_Ostr);
 }
-inline ostream&     GREEN(ostream& _Ostr)
-{
-    _Ostr.flush();
-    SetConsoleTextAttribute(hStdOut, FOREGROUND_GREEN);
-    return (_Ostr);
-}
-inline ostream&     LIGHT_GREEN(ostream& _Ostr)
-{
-    _Ostr.flush();
-    SetConsoleTextAttribute(hStdOut, FOREGROUND_GREEN | FOREGROUND_INTENSITY);
-    return (_Ostr);
-}
-inline ostream&     YELLOW(ostream& _Ostr)
-{
-    _Ostr.flush();
-    SetConsoleTextAttribute(hStdOut, FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_INTENSITY);
-    return (_Ostr);
-}
-inline ostream&     GREY(ostream& _Ostr)
-{
-    _Ostr.flush();
-    SetConsoleTextAttribute(hStdOut, FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
-    return (_Ostr);
-}
-inline ostream&     RESET(ostream& _Ostr)
-{
-    _Ostr.flush();
-    SetConsoleTextAttribute(hStdOut, FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY);
-    return (_Ostr);
-}
+inline ostream& DARK_RED(ostream& _Ostr) { return COLOUR(_Ostr, FOREGROUND_RED); }
+inline ostream& RED(ostream& _Ostr) { return COLOUR(_Ostr, FOREGROUND_RED | FOREGROUND_INTENSITY); }
+inline ostream& DARK_BLUE(ostream& _Ostr) { return COLOUR(_Ostr, FOREGROUND_BLUE); }
+inline ostream& BLUE(ostream& _Ostr) { return COLOUR(_Ostr, FOREGROUND_BLUE | FOREGROUND_INTENSITY); }
+inline ostream& DARK_GREEN(ostream& _Ostr) { return COLOUR(_Ostr, FOREGROUND_GREEN); }
+inline ostream& GREEN(ostream& _Ostr) { return COLOUR(_Ostr, FOREGROUND_GREEN | FOREGROUND_INTENSITY); }
+inline ostream& YELLOW(ostream& _Ostr) { return COLOUR(_Ostr, FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_INTENSITY); }
+inline ostream& GOLD(ostream& _Ostr) { return COLOUR(_Ostr, FOREGROUND_RED | FOREGROUND_GREEN); }
+inline ostream& CYAN(ostream& _Ostr) { return COLOUR(_Ostr, FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_INTENSITY); }
+inline ostream& DARK_CYAN(ostream& _Ostr) { return COLOUR(_Ostr, FOREGROUND_BLUE | FOREGROUND_GREEN); }
+inline ostream& DARK_PURPLE(ostream& _Ostr) { return COLOUR(_Ostr, FOREGROUND_BLUE | FOREGROUND_RED); }
+inline ostream& PURPLE(ostream& _Ostr) { return COLOUR(_Ostr, FOREGROUND_BLUE | FOREGROUND_RED | FOREGROUND_INTENSITY); }
+inline ostream& GREY(ostream& _Ostr) { return COLOUR(_Ostr, FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE); }
+inline ostream& WHITE(ostream& _Ostr) { return COLOUR(_Ostr, FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY); }
+inline ostream& BLACK(ostream& _Ostr) { return COLOUR(_Ostr, 0); }
+inline ostream& RESET(ostream& _Ostr) { return COLOUR(_Ostr, FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY); }
 
 // GARLAND!
 struct Garland
@@ -138,7 +68,7 @@ inline Garland GARLAND(int length)
 inline ostream& operator<<(ostream& os, const Garland& g)
 {
     os << YELLOW << "**";
-    for (int i = 0; i<g.length; ++i)
+    for (int i = 0; i < g.length; ++i)
     {
         os << RED << "o" << YELLOW << "*" << GREEN << "o" << YELLOW << "*";
     }
@@ -293,23 +223,58 @@ static inline string trim_copy(string s, const char* chars) {
 }
 
 
+// read a delimiter that must match a certain string
+// eg: is >> x >> "," >> y;
+inline istream& operator>>(istream& is, const char* checkstr)
+{
+    // skip ws at the start of checkstr
+    const char* currcheck = checkstr;
+    while (isspace(*currcheck))
+        ++currcheck;
+
+    // skip ws at start of istream
+    while (isspace(is.peek()))
+        is.get();
+
+    // go through checkstr char by char and ensure we get matching data out of is
+    while (*currcheck)
+    {
+        if (is.peek() != *currcheck)
+        {
+            // oh no!
+            int badval = is.peek();
+            is.setstate(ios_base::failbit);
+
+            throw format("unexpected input character. expected '{}'({}) but found '{}'({})", char(*currcheck), int(*currcheck), char(badval), int(badval));
+        }
+
+        is.get();
+        ++currcheck;
+    }
+
+    return is;
+}
+
+
+
 // ----- profiling -----
 class ScopeTimer
 {
     string m_name;
-    chrono::high_resolution_clock::time_point m_start;
+    chrono::steady_clock::time_point m_start;
 
 public:
-    ScopeTimer() = delete;
     explicit ScopeTimer(const char* name) : m_name(name), m_start(chrono::high_resolution_clock::now())
-    { /**/ }
+    { /**/
+    }
     ~ScopeTimer()
     {
         const auto end = chrono::high_resolution_clock::now();
         const auto duration_ns = chrono::duration_cast<chrono::nanoseconds>(end - m_start).count();
-        cout << m_name << " took " << duration_ns/1000 << "us" << endl;
+        cout << m_name << " took " << duration_ns / 1000 << "us" << endl;
     }
 };
+#define TIME_SCOPE(name)    ScopeTimer timer_##name(#name)
 
 
 // ----- day harness -----
@@ -373,7 +338,7 @@ void skip(const char* message = "cos it's really slow!");
 void jumptoday(int day);
 
 #define nest(...)
-#define nonono(...) skip()
+#define nonono(...) gogogo(__VA_ARGS__)
 
 #ifdef _DEBUG
 #define nononoD(...) skip("cos it's too slow for debug...")
@@ -389,4 +354,3 @@ void jumptoday(int day);
 
 
 int twinkleforever();
-

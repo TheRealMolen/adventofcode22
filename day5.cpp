@@ -39,6 +39,24 @@ struct CraneRule
 };
 using CraneRules = vector<CraneRule>;
 
+void execute9000(const CraneRule& rule, Stacks& stax)
+{
+    for (uint32_t i = 0; i < rule.count; ++i)
+    {
+        stax[rule.to].push_back(stax[rule.from].back());
+        stax[rule.from].pop_back();
+    }
+}
+
+void execute9001(const CraneRule& rule, Stacks& stax)
+{
+    auto& from = stax[rule.from];
+    auto& to = stax[rule.to];
+    auto fromBegin = end(from) - rule.count;
+    copy(fromBegin, end(from), back_inserter(to));
+    from.erase(fromBegin, end(from));
+}
+
 CraneRules readCraneRules(const stringlist& input)
 {
     CraneRules rules;
@@ -47,35 +65,44 @@ CraneRules readCraneRules(const stringlist& input)
         if (line[0] != 'm')
             continue;
 
-        CraneRule rule;
+        int count, from, to;
         istringstream is(line);
-        is >> "move " >> rule.count >> " from " >> rule.from >> " to " >> rule.to;
+        is >> "move " >> count >> " from " >> from >> " to " >> to;
+
+        rules.emplace_back(uint8_t(count), uint8_t(from-1), uint8_t(to-1));
     }
 
     return rules;
 }
 
-
-
-
-int day5(const stringlist& input)
+string day5(const stringlist& input)
 {
     Stacks stax = readInitialStacks(input);
     CraneRules rules = readCraneRules(input);
 
-    // read rules
+    for (auto& rule : rules)
+        execute9000(rule, stax);
 
-    return -1;
+    string tops;
+    for (auto& stack : stax)
+        tops += stack.back();
+
+    return tops;
 }
 
-int day5_2(const stringlist& input)
+string day5_2(const stringlist& input)
 {
-    for (auto& line : input)
-    {
-        (void)line;
-    }
+    Stacks stax = readInitialStacks(input);
+    CraneRules rules = readCraneRules(input);
 
-    return -1;
+    for (auto& rule : rules)
+        execute9001(rule, stax);
+
+    string tops;
+    for (auto& stack : stax)
+        tops += stack.back();
+
+    return tops;
 }
 
 
@@ -92,9 +119,9 @@ move 3 from 1 to 3
 move 2 from 2 to 1
 move 1 from 1 to 2)";
 
-    test(-100, day5(READ(sample)));
-    //gogogo(day5(LOAD(5)));
+    test("CMZ", day5(READ(sample)));
+    gogogo(day5(LOAD(5)));
 
-    //test(-100, day5_2(READ(sample)));
-    //gogogo(day5_2(LOAD(5)));
+    test("MCD", day5_2(READ(sample)));
+    gogogo(day5_2(LOAD(5)));
 }
