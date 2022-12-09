@@ -46,6 +46,9 @@
     <ClCompile Include="day8.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="day9.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="harness.h">
@@ -55,6 +58,12 @@
       <Filter>Source Files</Filter>
     </ClInclude>
     <ClInclude Include="chargrid.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="pt3.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="pt2.h">
       <Filter>Source Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -81,6 +90,9 @@
       <Filter>data</Filter>
     </Text>
     <Text Include="data\day8.txt">
+      <Filter>data</Filter>
+    </Text>
+    <Text Include="data\day9.txt">
       <Filter>data</Filter>
     </Text>
   </ItemGroup>
