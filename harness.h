@@ -114,6 +114,15 @@ public:
     {
         stringlist lst;
         string s;
+
+        // skip the UTF8 BOM if there is one
+        if (is.peek() == 0xEF)
+        {
+            is.get();
+            if (is.get() != 0xBB || is.get() != 0xBF)
+                throw "bad bom";
+        }
+
         while (getline(is, s))
             lst.push_back(s);
 
