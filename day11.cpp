@@ -207,8 +207,5 @@ void run_day11()
     gogogo(day11(LOAD(11)));
 
     test(2713310158ll, day11_2(LOAD(11t)));
-    {
-        TIME_SCOPE(day11_part2);
-        gogogo(day11_2(LOAD(11)), 15310845153ll);
-    }
+    gogogo(day11_2(LOAD(11)), 15310845153ll);
 }
