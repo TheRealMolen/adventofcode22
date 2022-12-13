@@ -1,7 +1,6 @@
 ﻿#include "pch.h"
 #include "harness.h"
 
-
 struct PacketVal
 {
     int i = -1;
@@ -39,9 +38,7 @@ PacketVal parseList(const char*& s)
     };
 
     PacketVal list;
-
     expect('[');
-
     while (!has(']'))
     {
         if (has('['))
@@ -51,7 +48,6 @@ PacketVal parseList(const char*& s)
 
         eat(',');
     }
-
     expect(']');
 
     return list;
