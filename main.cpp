@@ -52,7 +52,7 @@ int main()
     run_day10();
     run_day11();
     run_day12();
-    //run_day13();
+    run_day13();
     //run_day14();
     //run_day15();
     //run_day16();
