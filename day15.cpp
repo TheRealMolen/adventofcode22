@@ -30,22 +30,28 @@ vector<Report> readReports(const stringlist& input)
     return reports;
 }
 
-
+auto intervalLess = [](const pair<int, int>& a, const pair<int, int>& b)
+{
+    return a.first < b.first;
+};
 void coalesceIntervals(vector<pair<int, int>>& intervals)
 {
-    ranges::sort(intervals);
+    sort(begin(intervals), end(intervals), intervalLess);
 
-    for (auto it = begin(intervals); it != end(intervals) && (it + 1) != end(intervals); /**/)
+    static vector<pair<int, int>> outervals;
+    outervals.clear();
+    outervals.push_back(intervals.front());
+    for (const auto& i : intervals)
     {
-        auto itNext = it + 1;
-        if (itNext->first <= it->second)
+        if (i.first <= outervals.back().second)
         {
-            it->second = max(it->second, itNext->second);
-            intervals.erase(itNext);
+            outervals.back().second = max(i.second, outervals.back().second);
+            continue;
         }
-        else
-            ++it;
+
+        outervals.push_back(i);
     }
+    outervals.swap(intervals);
 }
 
 
@@ -117,6 +123,8 @@ i64 day15_2(const stringlist& input, int maxCoord)
     for (int y=0; y<=maxCoord; ++y)
     {
         intervals.clear();
+        intervals.reserve(reports.size());
+
         for (auto& [s,b] : reports)
         {
             int distSB = manhattan(s, b);
@@ -166,8 +174,8 @@ Sensor at x=14, y=3: closest beacon is at x=15, y=3
 Sensor at x=20, y=1: closest beacon is at x=15, y=3)";
 
     test(26, day15(READ(sample), 10));
-    gogogo(day15(LOAD(15), 2000000));
+    nonono(day15(LOAD(15), 2000000), 4724228);
 
     nest(56000011ll, day15_2(READ(sample), 20));
-    nononoD(day15_2(LOAD(15), 4000000));
+    nonono(day15_2(LOAD(15), 4000000), 13622251246513ll);
 }
