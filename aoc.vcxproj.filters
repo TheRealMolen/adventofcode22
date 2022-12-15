@@ -61,6 +61,12 @@
     <ClCompile Include="day13.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="day14.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="day15.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="harness.h">
@@ -76,6 +82,9 @@
       <Filter>Source Files</Filter>
     </ClInclude>
     <ClInclude Include="pt2.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="vector2d.h">
       <Filter>Source Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -125,6 +134,14 @@
     <Text Include="data\day13.txt">
       <Filter>data</Filter>
     </Text>
-    <Text Include="data\day13t.txt" />
+    <Text Include="data\day14.txt">
+      <Filter>data</Filter>
+    </Text>
+    <Text Include="data\day13t.txt">
+      <Filter>data</Filter>
+    </Text>
+    <Text Include="data\day15.txt">
+      <Filter>data</Filter>
+    </Text>
   </ItemGroup>
 </Project>

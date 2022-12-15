@@ -1,92 +1,9 @@
 ﻿#include "pch.h"
 #include "harness.h"
 #include "pt2.h"
+#include "vector2d.h"
 
 #include <queue>
-
-#define CHECKED_VECTOR2Dx
-
-template<typename T>
-class vector2d
-{
-public:
-    using value_type = T;
-    using coord = Pt2<i16>;
-
-    vector2d(u32 width, u32 height, const value_type& defaultVal = {})
-        : m_width(width)
-        , m_height(height)
-        , m_buf(width* height, defaultVal)
-    { /**/ }
-
-    vector2d(const stringlist& lines)
-        : m_width(u16(lines.front().length()))
-        , m_height(u16(lines.size()))
-    {
-        m_buf.reserve(m_width * m_height);
-        for (const string& line : lines)
-            ranges::copy(line, back_inserter(m_buf));
-    }
-
-    [[nodiscard]] u32 width() const { return m_width; }
-    [[nodiscard]] u32 height() const { return m_height; }
-    [[nodiscard]] u32 size() const { return m_width * m_height; }
-
-    bool isInMap(const coord& c) const
-    {
-        return (c.x < int(m_width) && c.y < int(m_height) && c.x >= 0 && c.y >= 0);
-    }
-
-    value_type& operator[](const coord& c)
-    {
-#ifdef CHECKED_VECTOR2D
-        if (!isInMap(c))
-            throw "oob";
-#endif
-        return m_buf[c.x + c.y * m_width];
-    }
-    const value_type& operator[](const coord& c) const
-    {
-#ifdef CHECKED_VECTOR2D
-        if (!isInMap(c))
-            throw "oob";
-#endif
-        return m_buf[c.x + c.y * m_width];
-    }
-
-    coord find_first(const value_type& needle) const
-    {
-        auto foundIt = ranges::find(m_buf, needle);
-        if (foundIt == end(m_buf))
-            throw "doesn't exist";
-
-        int ix = int(distance(begin(m_buf), foundIt));
-        auto y = i16(ix / m_width);
-        auto x = i16(ix % m_width);
-        return { x, y };
-    }
-
-    // o_O VC 16.11.21 can't codegen the non-hardcoded version!
-    //void foreach_matching(const value_type& match, auto&& fn)
-    void foreach_a(auto&& fn)
-    {
-        auto it = begin(m_buf);
-        for (u32 y = 0; y < m_height; ++y)
-        {
-            for (u32 x = 0; x < m_width; ++x, ++it)
-            {
-                if (*it == 'a')
-                    fn(coord{ coord::el_type(x), coord::el_type(y) });
-            }
-        }
-    }
-
-private:
-    u32 m_width;
-    u32 m_height;
-    vector<value_type> m_buf;
-};
-
 
 namespace
 {
@@ -98,12 +15,6 @@ using Distance = u16;
 constexpr Distance MaxDistance = numeric_limits<Distance>::max();
 
 constexpr MapCoord Directions[] = {{1,0}, {0,1}, {-1,0}, {0,-1}};
-}
-
-void erase_unsorted(auto& container, auto it)
-{
-    swap(*it, *container.rbegin());
-    container.pop_back();
 }
 
 
@@ -196,7 +107,7 @@ int day12_2(const stringlist& input)
     hill[start] = 'a';
 
     vector<MapCoord> startPoints;
-    hill.foreach_a([&startPoints](const MapCoord& c) { startPoints.push_back(c); });
+    hill.foreach_matching('a', [&startPoints](const MapCoord& c) { startPoints.push_back(c); });
 
     auto dest = hill.find_first('E');
     hill[dest] = 'z';

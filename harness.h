@@ -276,6 +276,15 @@ inline istream& operator>>(istream& is, const char* checkstr)
 
 
 
+// ----- handy -----
+inline auto erase_unsorted(auto& container, auto it)
+{
+    swap(*it, *container.rbegin());
+    container.pop_back();
+    return it;
+}
+
+
 // ----- profiling -----
 class ScopeTimer
 {
