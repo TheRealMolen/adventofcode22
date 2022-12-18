@@ -26,6 +26,7 @@ struct ValveNode
 struct ValveGraph
 {
     vector<ValveNode> nodes;
+    u32 maxFlowRate = 0;
     u16 allValvesMask = 0;
 };
 
@@ -143,10 +144,10 @@ ValveGraph optimiseTunnels(const vector<Valve>& valves)
         }
     }
 
+    g.maxFlowRate = accumulate(begin(g.nodes), end(g.nodes), 0u, [](u32 acc, auto& v) { return acc + v.rate; });
     g.allValvesMask = u16((1 << size(g.nodes)) - 1);
 
     return g;
-
 }
 
 
@@ -159,8 +160,6 @@ struct GraphState
     u16 valvesOpen = 1;
     i8 minute = 1;
     ValveIx location = 0;
-
-    u8 nextExits[16] = { 0 };
 };
 
 
@@ -189,37 +188,44 @@ ostream& operator<<(ostream& os, const GraphState& s)
 
 bool tick(GraphState& state, int count, u32& mostReleased)
 {
-    if (count == 0)
+    if (count == 0) [[unlikely]]
         throw "hm";
 
-    for (/**/; count > 0; --count)
+    // is there any point?
+    int remaining = 31 - state.minute;
+    int thisFlowTime = min(count, remaining);
+    u32 thisFlow = thisFlowTime * state.currentFlowRate;
+    int finalFlowTime = max(0, 31 - (state.minute + thisFlowTime));
+    int finalFlow = finalFlowTime * state.graph.maxFlowRate;
+    if (state.totalReleased + thisFlow + finalFlow < mostReleased)
     {
-  //      cout << state << endl;
-
-        state.totalReleased += state.currentFlowRate;
-        ++state.minute;
-
-        if (state.minute > 30)
-        {
-            if (state.totalReleased > mostReleased)
-            {
-                mostReleased = state.totalReleased;
-                cout << "found new max release of " << mostReleased << endl;
-            }
-
-            return false;
-        }
+        state.minute = 31;
+        return false;
     }
 
+    state.totalReleased += thisFlow;
+    state.minute += i8(thisFlowTime);
+
+    if (state.minute > 30)
+    {
+        if (state.totalReleased > mostReleased)
+        {
+            mostReleased = state.totalReleased;
+//            cout << "found new max release of " << mostReleased << endl;
+        }
+        return false;
+    }
     return true;
 }
 
-void takeNextAction(const GraphState& state, u32& mostReleased)
+
+void takeNextAction(const GraphState& state, u32& mostReleased);
+
+inline void tryOpeningValve(const GraphState& state, u32& mostReleased)
 {
     const ValveNode& room = state.graph.nodes[state.location];
-    const u16 roomMask = 1 << state.location;
 
-    // try turning the valve on
+    const u16 roomMask = 1 << state.location;
     if (room.rate > 0 && !(state.valvesOpen & roomMask))
     {
         GraphState newState = state;
@@ -230,6 +236,27 @@ void takeNextAction(const GraphState& state, u32& mostReleased)
             takeNextAction(newState, mostReleased);
         }
     }
+}
+
+inline void tryMovingToRoom(const GraphState& state, ValveIx dest, u32& mostReleased)
+{
+    const ValveNode& room = state.graph.nodes[state.location];
+    u8 cost = room.costToValve[dest];
+
+    if (state.minute + cost > 30)
+        return;
+
+    GraphState newState = state;
+    if (!tick(newState, cost, mostReleased))
+        return; // this was a fruitless action
+
+    newState.location = dest;
+    takeNextAction(newState, mostReleased);
+}
+
+void takeNextAction(const GraphState& state, u32& mostReleased)
+{
+    tryOpeningValve(state, mostReleased);
 
     // try moving to all the other closed valves
     if (state.valvesOpen != state.graph.allValvesMask)
@@ -237,15 +264,10 @@ void takeNextAction(const GraphState& state, u32& mostReleased)
         u16 mask = 1;
         for (ValveIx i=0; i<ValveIx(size(state.graph.nodes)); ++i, mask <<= 1)
         {
-            if (state.valvesOpen & mask)
+            if (i == state.location || state.valvesOpen & mask)
                 continue;
 
-            GraphState newState = state;
-            if (!tick(newState, i, mostReleased))
-                continue;
-
-            newState.location = i;
-            takeNextAction(newState, mostReleased);
+            tryMovingToRoom(state, i, mostReleased);
         }
     }
 
@@ -255,17 +277,44 @@ void takeNextAction(const GraphState& state, u32& mostReleased)
 }
 
 
+u32 findBestPath(const ValveGraph& graph)
+{
+    const GraphState state{ graph };
+
+#if 0
+    u32 mostReleased = 0;
+    takeNextAction(state, mostReleased);
+    return mostReleased;
+#else
+    auto numActions = size(graph.nodes);  // +1 for open, -1 for move to this room
+
+    vector<u32> mostPerFirstAction(numActions, 0);
+    vector<thread> threads;
+    threads.reserve(numActions);
+
+    threads.emplace_back([&state, &mostPerFirstAction]() { tryOpeningValve(state, mostPerFirstAction[0]); });
+
+    // try moving to all the other closed valves
+    for (ValveIx i = 1; i < ValveIx(size(graph.nodes)); ++i)
+    {
+        threads.emplace_back([i, &state, &mostPerFirstAction]() { tryMovingToRoom(state, i, mostPerFirstAction[i]); });
+    }
+
+    for (auto& t : threads)
+        t.join();
+
+    return ranges::max(mostPerFirstAction);
+#endif
+}
+
+
 
 u32 day16(const stringlist& input)
 {
     auto valves = loadValves(input);
     auto graph = optimiseTunnels(valves);
 
-    u32 mostReleased = 0;
-    GraphState initialState {graph};
-    takeNextAction(initialState, mostReleased);
-
-    return mostReleased;
+    return findBestPath(graph);
 }
 
 int day16_2(const stringlist& input)
@@ -294,7 +343,7 @@ Valve II has flow rate=0; tunnels lead to valves AA, JJ
 Valve JJ has flow rate=21; tunnel leads to valve II)";
 
     test(1651u, day16(READ(sample)));
-    //gogogo(day16(LOAD(16)));
+    nononoD(day16(LOAD(16)));
 
     //test(-100, day16_2(READ(sample)));
     //gogogo(day16_2(LOAD(16)));
