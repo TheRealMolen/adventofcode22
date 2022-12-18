@@ -2,15 +2,15 @@
 #include "harness.h"
 
 
+using ValveIx = u8;
+
 struct Valve
 {
     int rate;
-    bool open = false;
+    vector<ValveIx> neighbours;
     string name;
     vector<string> tunnelNames;
 };
-
-using ValveIx = u8;
 
 struct ValveEdge    // just one way; a tunnel is a pair of these
 {
@@ -20,9 +20,8 @@ struct ValveEdge    // just one way; a tunnel is a pair of these
 struct ValveNode
 {
     u16 rate;
-    bool open = false;
     string name;
-    vector<ValveEdge> outgoing;
+    vector<u8> costToValve;
 };
 struct ValveGraph
 {
@@ -60,89 +59,91 @@ vector<Valve> loadValves(const stringlist& input)
 
     ranges::sort(valves, {}, &Valve::name);
 
+    for (auto& v : valves)
+    {
+        v.neighbours.reserve(size(v.tunnelNames));
+        for (auto& neighName : v.tunnelNames)
+        {
+            auto itNeigh = ranges::find(valves, neighName, &Valve::name);
+            v.neighbours.push_back(ValveIx(distance(begin(valves), itNeigh)));
+        }
+    }
+
     return valves;
+}
+
+ValveIx findValveIx(const string& name, const vector<Valve>& valves)
+{
+    auto itValve = ranges::find(valves, name, &Valve::name);
+    return ValveIx(distance(begin(valves), itValve));
+};
+
+u8 findMinCost(const string& aName, const string& bName, const vector<Valve>& valves)
+{
+    constexpr auto MaxCost = numeric_limits<u8>::max();
+
+    ValveIx aIx = findValveIx(aName, valves);
+    ValveIx bIx = findValveIx(bName, valves);
+
+    vector<u8> best(size(valves), MaxCost);
+    best[aIx] = 0;
+
+    vector<ValveIx> prev(size(valves), numeric_limits<ValveIx>::max());
+    vector<ValveIx> open(size(valves));
+    ranges::iota(open, ValveIx(0));
+
+    while(!empty(open))
+    {
+        auto itCurrIx = ranges::min_element(open, [&best](ValveIx a, ValveIx b) { return best[a] < best[b]; });
+        ValveIx currIx = *itCurrIx;
+        if (currIx == bIx)
+            return best[currIx];
+
+        erase_unsorted(open, itCurrIx);
+
+        const Valve& curr = valves[currIx];
+
+        for (ValveIx neighIx : curr.neighbours)
+        {
+            if (ranges::find(open, neighIx) == end(open))
+                continue;
+
+            u8 newCost = best[currIx] + 1;
+            if (newCost < best[neighIx])
+            {
+                best[neighIx] = newCost;
+                prev[neighIx] = currIx;
+            }
+        }
+    }
+
+    throw "no path";
 }
 
 ValveGraph optimiseTunnels(const vector<Valve>& valves)
 {
-    set<string> usedRooms;
-    struct Tunnel
-    {
-        deque<string> rooms;
-        u32 cost = ~0u;
-
-        const string& start() const { return rooms.front(); }
-        const string& end() const { return rooms.back(); }
-    };
-    vector<Tunnel> tunnels;
-    vector<pair<string, string>> doors;
-
     ValveGraph g;
-
+    auto findNodeIx = [&g](const string& name) -> ValveIx { return ValveIx(distance(begin(g.nodes), ranges::find(g.nodes, name, &ValveNode::name))); };
     auto isRoom = [](const Valve& v) { return v.rate > 0 || v.name == "AA"; };
-    auto findValve = [&valves](const string& name) -> const Valve* { return &*ranges::find(valves, name, &Valve::name); };
-    auto isNameARoom = [&](const string& name) { return isRoom(*findValve(name)); };
-    auto findNodeIx = [&g](const string& name) -> u8 { return u8(distance(begin(g.nodes), ranges::find(g.nodes, name, &ValveNode::name))); };
-    for (auto& v : valves)
+
+    for (auto& v : valves | views::filter(isRoom))
+        g.nodes.push_back({ .rate = u16(v.rate), .name = v.name });
+
+    for (auto& v : g.nodes)
+        v.costToValve.resize(g.nodes.size(), 0);
+
+    // find min cost btw each pair of rooms
+    for (auto itA=begin(g.nodes); (itA+1) != end(g.nodes); ++itA)
     {
-        if (usedRooms.contains(v.name))
-            continue;
-        usedRooms.insert(v.name);
-
-        if (isRoom(v))
+        for (auto itB = itA+1; itB != end(g.nodes); ++itB)
         {
-            g.nodes.push_back({ .rate = u16(v.rate), .name = v.name });
-            for (const string& tunnel : v.tunnelNames | views::filter(isNameARoom))
-                doors.emplace_back(v.name, tunnel);
-        }
-        else
-        {
-            Tunnel t{ { v.tunnelNames[0], v.name, v.tunnelNames[1] }, 2 };
-
-            // follow the tunnel backwards
-            for (const Valve* prev = findValve(t.start()); !isRoom(*prev); prev = findValve(t.start()))
-            {
-                usedRooms.insert(t.start());
-                t.rooms.push_front((t.rooms[1] == prev->tunnelNames[0]) ? prev->tunnelNames[1] : prev->tunnelNames[0]);
-                t.cost++;
-            }
-            // follow the tunnel forwards
-            for (const Valve* next = findValve(t.end()); !isRoom(*next); next = findValve(t.end()))
-            {
-                usedRooms.insert(t.end());
-                t.rooms.push_back((t.rooms[t.rooms.size()-2] == next->tunnelNames[0]) ? next->tunnelNames[1] : next->tunnelNames[0]);
-                t.cost++;
-            }
-
-            tunnels.push_back(move(t));
+            u8 cost = findMinCost(itA->name, itB->name, valves);
+            itA->costToValve[findNodeIx(itB->name)] = cost;
+            itB->costToValve[findNodeIx(itA->name)] = cost;
         }
     }
 
-    for (const auto& d : doors)
-    {
-        u8 startIx = findNodeIx(d.first);
-        u8 endIx = findNodeIx(d.second);
-        g.nodes[startIx].outgoing.emplace_back(endIx, u8(1));
-    }
-
-    for (const auto& t : tunnels)
-    {
-        u8 startIx = findNodeIx(t.start());
-        u8 endIx = findNodeIx(t.end());
-
-        g.nodes[startIx].outgoing.emplace_back(endIx, u8(t.cost));
-        g.nodes[endIx].outgoing.emplace_back(startIx, u8(t.cost));
-    }
-
-    {
-        g.allValvesMask = 0;
-        u16 mask = 1;
-        for (auto itNode=begin(g.nodes); itNode!=end(g.nodes); ++itNode, mask <<= 1)
-        {
-            if (itNode->rate > 0)
-                g.allValvesMask |= mask;
-        }
-    }
+    g.allValvesMask = u16((1 << size(g.nodes)) - 1);
 
     return g;
 
@@ -155,7 +156,7 @@ struct GraphState
 
     u32 totalReleased = 0;
     u16 currentFlowRate = 0;
-    u16 valvesOpen = 0;
+    u16 valvesOpen = 1;
     i8 minute = 1;
     ValveIx location = 0;
 
@@ -188,11 +189,13 @@ ostream& operator<<(ostream& os, const GraphState& s)
 
 bool tick(GraphState& state, int count, u32& mostReleased)
 {
-   // cout << state << endl;
+    if (count == 0)
+        throw "hm";
 
-    // todo multiply
     for (/**/; count > 0; --count)
     {
+  //      cout << state << endl;
+
         state.totalReleased += state.currentFlowRate;
         ++state.minute;
 
@@ -217,7 +220,7 @@ void takeNextAction(const GraphState& state, u32& mostReleased)
     const u16 roomMask = 1 << state.location;
 
     // try turning the valve on
-    if (room.rate > 10 && !(state.valvesOpen & roomMask))
+    if (room.rate > 0 && !(state.valvesOpen & roomMask))
     {
         GraphState newState = state;
         if (tick(newState, 1, mostReleased))
@@ -228,32 +231,20 @@ void takeNextAction(const GraphState& state, u32& mostReleased)
         }
     }
 
-    // try all tunnels off this room
+    // try moving to all the other closed valves
     if (state.valvesOpen != state.graph.allValvesMask)
     {
-        for (u8 i = 0; i < size(room.outgoing); ++i)
+        u16 mask = 1;
+        for (ValveIx i=0; i<ValveIx(size(state.graph.nodes)); ++i, mask <<= 1)
         {
-            u8 exitIx = (i + state.nextExits[state.location]) % size(room.outgoing);
-            auto& tunnel = room.outgoing[exitIx];
-
-            GraphState newState = state;
-            newState.nextExits[state.location] = exitIx + 1;
-            if (!tick(newState, tunnel.cost, mostReleased))
+            if (state.valvesOpen & mask)
                 continue;
 
-            newState.location = tunnel.end;
-            takeNextAction(newState, mostReleased);
-        }
-    }
+            GraphState newState = state;
+            if (!tick(newState, i, mostReleased))
+                continue;
 
-    // try turning the valve on
-    if (room.rate > 0 && room.rate <= 10 && !(state.valvesOpen & roomMask))
-    {
-        GraphState newState = state;
-        if (tick(newState, 1, mostReleased))
-        {
-            newState.valvesOpen |= roomMask;
-            newState.currentFlowRate += room.rate;
+            newState.location = i;
             takeNextAction(newState, mostReleased);
         }
     }
