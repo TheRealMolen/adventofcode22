@@ -19,7 +19,7 @@ struct ValveEdge    // just one way; a tunnel is a pair of these
 };
 struct ValveNode
 {
-    int rate;
+    u16 rate;
     bool open = false;
     string name;
     vector<ValveEdge> outgoing;
@@ -68,70 +68,60 @@ ValveGraph optimiseTunnels(const vector<Valve>& valves)
     struct Tunnel
     {
         deque<string> rooms;
-        u32 cost = 1;
+        u32 cost = ~0u;
 
         const string& start() const { return rooms.front(); }
         const string& end() const { return rooms.back(); }
     };
     vector<Tunnel> tunnels;
+    vector<pair<string, string>> doors;
 
     ValveGraph g;
 
     auto isRoom = [](const Valve& v) { return v.rate > 0 || v.name == "AA"; };
     auto findValve = [&valves](const string& name) -> const Valve* { return &*ranges::find(valves, name, &Valve::name); };
+    auto isNameARoom = [&](const string& name) { return isRoom(*findValve(name)); };
     auto findNodeIx = [&g](const string& name) -> u8 { return u8(distance(begin(g.nodes), ranges::find(g.nodes, name, &ValveNode::name))); };
     for (auto& v : valves)
     {
         if (usedRooms.contains(v.name))
             continue;
+        usedRooms.insert(v.name);
 
         if (isRoom(v))
         {
-            cout << "** adding room " << v.name << endl;
-            ValveNode n;
-            n.rate = v.rate;
-            n.name = v.name;
-            g.nodes.push_back(move(n));
-
-            usedRooms.insert(v.name);
+            g.nodes.push_back({ .rate = u16(v.rate), .name = v.name });
+            for (const string& tunnel : v.tunnelNames | views::filter(isNameARoom))
+                doors.emplace_back(v.name, tunnel);
         }
         else
         {
-            cout << "** adding tunnel starting at " << v.name << endl;
-
-            if (v.tunnelNames.size() != 2)
-                throw "ohno";
-
-            Tunnel t{ { v.tunnelNames[0], v.name, v.tunnelNames[1] } };
-            usedRooms.insert(v.name);
+            Tunnel t{ { v.tunnelNames[0], v.name, v.tunnelNames[1] }, 2 };
 
             // follow the tunnel backwards
-            cout << "  scan back from " << v.name << " via " << t.start() << endl;
             for (const Valve* prev = findValve(t.start()); !isRoom(*prev); prev = findValve(t.start()))
             {
-                if (prev->tunnelNames.size() != 2)
-                    throw "ohno";;
-
                 usedRooms.insert(t.start());
                 t.rooms.push_front((t.rooms[1] == prev->tunnelNames[0]) ? prev->tunnelNames[1] : prev->tunnelNames[0]);
-                cout << "      ... -> " << t.start() << endl;
                 t.cost++;
             }
             // follow the tunnel forwards
-            cout << "  scan fwd from " << v.name << " via " << t.end() << endl;
             for (const Valve* next = findValve(t.end()); !isRoom(*next); next = findValve(t.end()))
             {
-                if (next->tunnelNames.size() != 2)
-                    throw "ohno";
-
                 usedRooms.insert(t.end());
                 t.rooms.push_back((t.rooms[t.rooms.size()-2] == next->tunnelNames[0]) ? next->tunnelNames[1] : next->tunnelNames[0]);
-                cout << "      ... -> " << t.end() << endl;
                 t.cost++;
             }
 
             tunnels.push_back(move(t));
         }
+    }
+
+    for (const auto& d : doors)
+    {
+        u8 startIx = findNodeIx(d.first);
+        u8 endIx = findNodeIx(d.second);
+        g.nodes[startIx].outgoing.emplace_back(endIx, u8(1));
     }
 
     for (const auto& t : tunnels)
@@ -144,16 +134,134 @@ ValveGraph optimiseTunnels(const vector<Valve>& valves)
     }
 
     return g;
+
+}
+
+
+struct GraphState
+{
+    const ValveGraph& graph;
+
+    u32 totalReleased = 0;
+    u16 currentFlowRate = 0;
+    u16 valvesOpen = 0;
+    i8 minute = 1;
+    ValveIx location = 0;
+
+    u8 usedExits[16] = { 0 };
+};
+
+
+ostream& operator<<(ostream& os, const GraphState& s)
+{
+    os << "== Minute " << int(s.minute) << " (" << s.graph.nodes[s.location].name << ") ==\n";
+    os << "  Valves open ";
+    if (s.valvesOpen)
+    {
+        for (u32 i=0, mask=1; i<16; ++i, mask <<= 1)
+        {
+            if (s.valvesOpen & mask)
+                os << s.graph.nodes[i].name << " ";
+        }
+    }
+    else
+    {
+        os << "none ";
+    }
+
+    os << ", releasing " << s.currentFlowRate << " pressure. " << s.totalReleased << " released before now.\n";
+
+    return os;
+}
+
+bool tick(GraphState& state, int count)
+{
+    cout << state << endl;
+
+    // todo multiply
+    for (/**/; count > 0; --count)
+    {
+ //       cout << "== Minute " << int(state.minute) << " releasing " << state.currentFlowRate << " pressure ==" << endl;
+        state.totalReleased += state.currentFlowRate;
+        ++state.minute;
+
+        if (state.minute > 30)
+            return false;
+    }
+
+    return true;
+}
+
+deque<string> g_moves = { "DD", "", "CC", "BB", "", "AA", "JJ", "", "AA", "DD", "EE", "HH", "", "EE", "", "DD", "CC", "", "zzzz" };
+
+void takeNextAction(const GraphState& state, u32& mostReleased)
+{
+    const ValveNode& room = state.graph.nodes[state.location];
+ //   cout << "arrived in room " << room.name << endl;
+    const u16 roomMask = 1 << state.location;
+
+    if (!g_moves.front().empty())
+    {
+        // try all tunnels off this room
+        for (auto& tunnel : room.outgoing)
+        {
+            if (state.graph.nodes[tunnel.end].name != g_moves.front())
+                continue;
+            g_moves.erase(begin(g_moves));
+
+            GraphState newState = state;
+            if (!tick(newState, tunnel.cost))
+            {
+                mostReleased = max(mostReleased, newState.totalReleased);
+                continue;
+            }
+
+            newState.location = tunnel.end;
+            takeNextAction(newState, mostReleased);
+        }
+    }
+
+    // try turning the valve on
+    if (g_moves.front().empty())
+    {
+        g_moves.erase(begin(g_moves));
+        if (room.rate > 0 && !(state.valvesOpen & roomMask))
+        {
+            GraphState newState = state;
+            if (!tick(newState, 1))
+            {
+                mostReleased = max(mostReleased, newState.totalReleased);
+            }
+            else
+            {
+      //          cout << "opened valve " << room.name << endl;
+                newState.valvesOpen |= roomMask;
+                newState.currentFlowRate += room.rate;
+                takeNextAction(newState, mostReleased);
+            }
+        }
+    }
+
+    // try running out the clock in here
+    GraphState newState = state;
+    while (tick(newState, 1))
+    { /**/ }
+
+    mostReleased = max(mostReleased, newState.totalReleased);
 }
 
 
 
-int day16(const stringlist& input)
+u32 day16(const stringlist& input)
 {
     auto valves = loadValves(input);
     auto graph = optimiseTunnels(valves);
 
-    return -1;
+    u32 mostReleased = 0;
+    GraphState initialState {graph};
+    takeNextAction(initialState, mostReleased);
+
+    return mostReleased;
 }
 
 int day16_2(const stringlist& input)
@@ -181,8 +289,8 @@ Valve HH has flow rate=22; tunnel leads to valve GG
 Valve II has flow rate=0; tunnels lead to valves AA, JJ
 Valve JJ has flow rate=21; tunnel leads to valve II)";
 
-    test(1651, day16(READ(sample)));
-    gogogo(day16(LOAD(16)));
+    test(1651u, day16(READ(sample)));
+    //gogogo(day16(LOAD(16)));
 
     //test(-100, day16_2(READ(sample)));
     //gogogo(day16_2(LOAD(16)));
