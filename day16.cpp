@@ -27,6 +27,7 @@ struct ValveNode
 struct ValveGraph
 {
     vector<ValveNode> nodes;
+    u16 allValvesMask = 0;
 };
 
 vector<Valve> loadValves(const stringlist& input)
@@ -133,6 +134,16 @@ ValveGraph optimiseTunnels(const vector<Valve>& valves)
         g.nodes[endIx].outgoing.emplace_back(startIx, u8(t.cost));
     }
 
+    {
+        g.allValvesMask = 0;
+        u16 mask = 1;
+        for (auto itNode=begin(g.nodes); itNode!=end(g.nodes); ++itNode, mask <<= 1)
+        {
+            if (itNode->rate > 0)
+                g.allValvesMask |= mask;
+        }
+    }
+
     return g;
 
 }
@@ -148,7 +159,7 @@ struct GraphState
     i8 minute = 1;
     ValveIx location = 0;
 
-    u8 usedExits[16] = { 0 };
+    u8 nextExits[16] = { 0 };
 };
 
 
@@ -174,47 +185,61 @@ ostream& operator<<(ostream& os, const GraphState& s)
     return os;
 }
 
-bool tick(GraphState& state, int count)
+
+bool tick(GraphState& state, int count, u32& mostReleased)
 {
-    cout << state << endl;
+   // cout << state << endl;
 
     // todo multiply
     for (/**/; count > 0; --count)
     {
- //       cout << "== Minute " << int(state.minute) << " releasing " << state.currentFlowRate << " pressure ==" << endl;
         state.totalReleased += state.currentFlowRate;
         ++state.minute;
 
         if (state.minute > 30)
+        {
+            if (state.totalReleased > mostReleased)
+            {
+                mostReleased = state.totalReleased;
+                cout << "found new max release of " << mostReleased << endl;
+            }
+
             return false;
+        }
     }
 
     return true;
 }
 
-deque<string> g_moves = { "DD", "", "CC", "BB", "", "AA", "JJ", "", "AA", "DD", "EE", "HH", "", "EE", "", "DD", "CC", "", "zzzz" };
-
 void takeNextAction(const GraphState& state, u32& mostReleased)
 {
     const ValveNode& room = state.graph.nodes[state.location];
- //   cout << "arrived in room " << room.name << endl;
     const u16 roomMask = 1 << state.location;
 
-    if (!g_moves.front().empty())
+    // try turning the valve on
+    if (room.rate > 10 && !(state.valvesOpen & roomMask))
     {
-        // try all tunnels off this room
-        for (auto& tunnel : room.outgoing)
+        GraphState newState = state;
+        if (tick(newState, 1, mostReleased))
         {
-            if (state.graph.nodes[tunnel.end].name != g_moves.front())
-                continue;
-            g_moves.erase(begin(g_moves));
+            newState.valvesOpen |= roomMask;
+            newState.currentFlowRate += room.rate;
+            takeNextAction(newState, mostReleased);
+        }
+    }
+
+    // try all tunnels off this room
+    if (state.valvesOpen != state.graph.allValvesMask)
+    {
+        for (u8 i = 0; i < size(room.outgoing); ++i)
+        {
+            u8 exitIx = (i + state.nextExits[state.location]) % size(room.outgoing);
+            auto& tunnel = room.outgoing[exitIx];
 
             GraphState newState = state;
-            if (!tick(newState, tunnel.cost))
-            {
-                mostReleased = max(mostReleased, newState.totalReleased);
+            newState.nextExits[state.location] = exitIx + 1;
+            if (!tick(newState, tunnel.cost, mostReleased))
                 continue;
-            }
 
             newState.location = tunnel.end;
             takeNextAction(newState, mostReleased);
@@ -222,32 +247,20 @@ void takeNextAction(const GraphState& state, u32& mostReleased)
     }
 
     // try turning the valve on
-    if (g_moves.front().empty())
+    if (room.rate > 0 && room.rate <= 10 && !(state.valvesOpen & roomMask))
     {
-        g_moves.erase(begin(g_moves));
-        if (room.rate > 0 && !(state.valvesOpen & roomMask))
+        GraphState newState = state;
+        if (tick(newState, 1, mostReleased))
         {
-            GraphState newState = state;
-            if (!tick(newState, 1))
-            {
-                mostReleased = max(mostReleased, newState.totalReleased);
-            }
-            else
-            {
-      //          cout << "opened valve " << room.name << endl;
-                newState.valvesOpen |= roomMask;
-                newState.currentFlowRate += room.rate;
-                takeNextAction(newState, mostReleased);
-            }
+            newState.valvesOpen |= roomMask;
+            newState.currentFlowRate += room.rate;
+            takeNextAction(newState, mostReleased);
         }
     }
 
     // try running out the clock in here
     GraphState newState = state;
-    while (tick(newState, 1))
-    { /**/ }
-
-    mostReleased = max(mostReleased, newState.totalReleased);
+    tick(newState, 100, mostReleased);
 }
 
 
