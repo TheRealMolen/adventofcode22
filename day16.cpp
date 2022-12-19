@@ -162,7 +162,6 @@ struct GraphState
     ValveIx location = 0;
 };
 
-
 ostream& operator<<(ostream& os, const GraphState& s)
 {
     os << "== Minute " << int(s.minute) << " (" << s.graph.nodes[s.location].name << ") ==\n";
@@ -244,7 +243,7 @@ inline void tryMovingToRoom(const GraphState& state, ValveIx dest, u32& mostRele
     u8 cost = room.costToValve[dest];
 
     if (state.minute + cost > 30)
-        return;
+        return; // can't be done
 
     GraphState newState = state;
     if (!tick(newState, cost, mostReleased))
@@ -258,7 +257,6 @@ void takeNextAction(const GraphState& state, u32& mostReleased)
 {
     tryOpeningValve(state, mostReleased);
 
-    // try moving to all the other closed valves
     if (state.valvesOpen != state.graph.allValvesMask)
     {
         u16 mask = 1;
@@ -277,14 +275,76 @@ void takeNextAction(const GraphState& state, u32& mostReleased)
 }
 
 
+ValveIx findBestMove(const GraphState& state)
+{
+    auto& rooms = state.graph.nodes;
+    const ValveNode& room = rooms[state.location];
+
+    ValveIx best = numeric_limits<ValveIx>::max();
+    u32 bestRelease = 0;
+
+    int minutesLeft = (31 - 1) - state.minute;  // -1 because we need to turn the valve on
+
+    u16 mask = 1 << 1;
+    for (ValveIx i = 1; i < ValveIx(size(state.graph.nodes)); ++i, mask <<= 1)
+    {
+        if (state.valvesOpen & mask)
+            continue;
+
+        u8 cost = room.costToValve[i];
+
+        if (state.minute + cost > 30)
+            throw "ono";
+
+        u32 totalRelease = (minutesLeft - cost) * rooms[i].rate;
+
+        if (totalRelease > bestRelease)
+        {
+            best = i;
+            bestRelease = totalRelease;
+        }
+    }
+
+    return best;
+}
+
+
 u32 findBestPath(const ValveGraph& graph)
 {
-    const GraphState state{ graph };
+    GraphState state{ graph };
 
 #if 0
     u32 mostReleased = 0;
     takeNextAction(state, mostReleased);
     return mostReleased;
+
+#elif 0
+
+    u32 mostReleased = 0;
+    while (state.valvesOpen != state.graph.allValvesMask)
+    {
+        cout << state << endl;
+
+        ValveIx destRoom = findBestMove(state);
+
+        const ValveNode& curr = state.graph.nodes[state.location];
+        const ValveNode& dest = state.graph.nodes[destRoom];
+        u8 cost = curr.costToValve[destRoom];
+
+        if (!tick(state, cost + 1, mostReleased))
+            throw "wow";
+
+        state.location = destRoom;
+        state.valvesOpen |= (1 << destRoom);
+        state.currentFlowRate += dest.rate;
+    }
+
+    cout << state << endl;
+    tick(state, 100, mostReleased);
+    cout << state << endl;
+
+    return mostReleased;
+
 #else
     auto numActions = size(graph.nodes);  // +1 for open, -1 for move to this room
 
@@ -347,4 +407,5 @@ Valve JJ has flow rate=21; tunnel leads to valve II)";
 
     //test(-100, day16_2(READ(sample)));
     //gogogo(day16_2(LOAD(16)));
+    skip("i'm bamboozled");
 }
