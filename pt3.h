@@ -13,7 +13,7 @@ struct Pt3
     el_type x, y, z;
 
     Pt3() = default;
-    Pt3(el_type _x, el_type _y, el_type _z) : x(_x), y(_y), z(_z)   { /**/ }
+    constexpr Pt3(el_type _x, el_type _y, el_type _z) : x(_x), y(_y), z(_z)   { /**/ }
 
     explicit Pt3(const string& str)
     {
