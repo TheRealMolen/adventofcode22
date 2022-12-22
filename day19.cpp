@@ -106,25 +106,9 @@ ostream& operator<<(ostream& os, const BotPlan& plan)
     return os;
 }
 
-const char* ResNames[] = { "Ore", "Clay", "Obsidian", "Geode" };
-ostream& operator<<(ostream& os, Resource r)
-{
-    os << ResNames[r];
-    return os;
-}
-ostream& operator<<(ostream& os, const Inventory& i)
-{
-    os << "resources=[" << _mm_extract_epi32(i.resources, 3) << ", " << _mm_extract_epi32(i.resources, 2)
-        << ", " << _mm_extract_epi32(i.resources, 1) << ", " << _mm_extract_epi32(i.resources, 0) << "], "
-        << ". bots=[" << _mm_extract_epi32(i.bots, 3) << ", " << _mm_extract_epi32(i.bots, 2)
-        << ", " << _mm_extract_epi32(i.bots, 1) << ", " << _mm_extract_epi32(i.bots, 0) << "].";
-    return os;
-}
-
 template<int MaxMinutes = 25>
 int runPlan(const Blueprint& bp, const BotPlan& plan)
 {
- //   cout << "running plan " << plan << " on bp " << bp.id << endl;
     Inventory inv;
     u64 planLeft = plan.plan;
     Resource bot = Resource(planLeft & 3);
@@ -133,31 +117,25 @@ int runPlan(const Blueprint& bp, const BotPlan& plan)
     u32 step = 0;
     for (int minute = 1; minute < MaxMinutes; ++minute)
     {
-  //      cout << "\n-- Minute " << minute << ", next bot to build is " << bot << ", step " << step << " ---\n  " << inv << endl;
         vecI newBots = VecZero;
 
         vecI unsatisfied = _mm_cmplt_epi32(inv.resources, bp.bots[bot]);
         if (_mm_testz_si128(unsatisfied, unsatisfied))
         {
-     //       cout << "   building " << bot << " bot...\n";
             inv.resources = _mm_sub_epi32(inv.resources, bp.bots[bot]);
             newBots = VecRes[bot];
 
             if (!planLeft) [[unlikely]]
             {
                 int minsRemaining = MaxMinutes - minute;
-     //           cout << "   *** skipping to the end... " << minsRemaining << " mins remaining\n";
                 inv.resources = _mm_add_epi32(inv.resources, inv.bots);
                 inv.bots = _mm_add_epi32(inv.bots, newBots);
-     //           cout << "    ...after finishing this minute: " << inv << endl;
 
                 if (minsRemaining > 1)
                 {
                     vecI vecMinsRemaining = _mm_set1_epi32(minsRemaining - 1);
                     vecI remainingResources = _mm_mul_epi32(inv.bots, vecMinsRemaining);
                     inv.resources = _mm_add_epi32(inv.resources, remainingResources);
-    //                cout << "    ...after finishing remaining " << _mm_extract_epi32(vecMinsRemaining, 0) << " minute: " << inv << "\n";
-    //               cout << "    ...final geode lump was " << _mm_extract_epi32(remainingResources, 0) << endl;
                 }
                 break;
             }
@@ -166,13 +144,11 @@ int runPlan(const Blueprint& bp, const BotPlan& plan)
             bot = Resource(planLeft & 3);
             planLeft >>= 2;
         }
-  //      else
-  //          cout << "   *** couldn't build " << bot << endl;
 
         inv.resources = _mm_add_epi32(inv.resources, inv.bots);
         inv.bots = _mm_add_epi32(inv.bots, newBots);
     }
-   // cout << "\nfinal inventory: " << inv << endl;
+
     return inv.getNumGeodes();
 }
 
@@ -232,10 +208,7 @@ vector<BotPlan> generateAllPlans()
     TIME_SCOPE(generateAllPlans);
 
     BotPlan curr;
-    vector<BotPlan> plans;
-
-    //plans.push_back(BotPlan("abbbbbcbcccdccdcdd"));
-    
+    vector<BotPlan> plans;    
     plans.reserve(2'000'000'000);
     for (int len = 5; len <= MaxLen; ++len)
     {
@@ -315,7 +288,7 @@ void run_day19()
 R"(Blueprint 1: Each ore robot costs 4 ore. Each clay robot costs 2 ore. Each obsidian robot costs 3 ore and 14 clay. Each geode robot costs 2 ore and 7 obsidian.
 Blueprint 2: Each ore robot costs 2 ore. Each clay robot costs 3 ore. Each obsidian robot costs 3 ore and 8 clay. Each geode robot costs 3 ore and 12 obsidian.)";
 
-    if constexpr (true)
+    if constexpr (false)
     {
         {
             auto plans = generateAllPlans<18>();
