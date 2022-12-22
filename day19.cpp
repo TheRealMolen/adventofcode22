@@ -70,13 +70,21 @@ struct BotPlan
     void setStep(int step, Resource res)
     {
         const u8 shift = u8(step * 2);
-        const u64 mask = 3 << shift;
+        const u64 mask = u64(3) << shift;
         plan = (plan & ~mask) | (u64(res) << shift);
     }
     Resource getStep(u32 step) const
     {
         const u8 shift = u8(step * 2);
         return Resource((plan >> shift) & 3);
+    }
+
+    BotPlan() = default;
+    explicit BotPlan(const char* str)
+    {
+        u32 step = 0;
+        for (;*str; ++str)
+            setStep(step++, Resource(*str - 'a'));
     }
 
     bool operator==(const BotPlan& other) const { return plan == other.plan; }
@@ -98,41 +106,73 @@ ostream& operator<<(ostream& os, const BotPlan& plan)
     return os;
 }
 
+const char* ResNames[] = { "Ore", "Clay", "Obsidian", "Geode" };
+ostream& operator<<(ostream& os, Resource r)
+{
+    os << ResNames[r];
+    return os;
+}
+ostream& operator<<(ostream& os, const Inventory& i)
+{
+    os << "resources=[" << _mm_extract_epi32(i.resources, 3) << ", " << _mm_extract_epi32(i.resources, 2)
+        << ", " << _mm_extract_epi32(i.resources, 1) << ", " << _mm_extract_epi32(i.resources, 0) << "], "
+        << ". bots=[" << _mm_extract_epi32(i.bots, 3) << ", " << _mm_extract_epi32(i.bots, 2)
+        << ", " << _mm_extract_epi32(i.bots, 1) << ", " << _mm_extract_epi32(i.bots, 0) << "].";
+    return os;
+}
 
 template<int MaxMinutes = 25>
-__declspec(noinline) int runPlan(const Blueprint& bp, const BotPlan& plan)
+int runPlan(const Blueprint& bp, const BotPlan& plan)
 {
+ //   cout << "running plan " << plan << " on bp " << bp.id << endl;
     Inventory inv;
+    u64 planLeft = plan.plan;
+    Resource bot = Resource(planLeft & 3);
+    planLeft >>= 2;
+
     u32 step = 0;
-    Resource bot = plan.getStep(0);
-    Resource maxBot = bot;
     for (int minute = 1; minute < MaxMinutes; ++minute)
     {
+  //      cout << "\n-- Minute " << minute << ", next bot to build is " << bot << ", step " << step << " ---\n  " << inv << endl;
         vecI newBots = VecZero;
 
         vecI unsatisfied = _mm_cmplt_epi32(inv.resources, bp.bots[bot]);
         if (_mm_testz_si128(unsatisfied, unsatisfied))
         {
+     //       cout << "   building " << bot << " bot...\n";
             inv.resources = _mm_sub_epi32(inv.resources, bp.bots[bot]);
-            ++step;
             newBots = VecRes[bot];
 
-            bot = plan.getStep(step);
-            if (bot == Ore && maxBot == Geode) [[unlikely]]
+            if (!planLeft) [[unlikely]]
             {
-                vecI minutesRemaining = _mm_set1_epi32(MaxMinutes - minute);
-                vecI remainingResources = _mm_mul_epi32(inv.bots, minutesRemaining);
-                inv.resources = _mm_add_epi32(inv.resources, remainingResources);
+                int minsRemaining = MaxMinutes - minute;
+     //           cout << "   *** skipping to the end... " << minsRemaining << " mins remaining\n";
+                inv.resources = _mm_add_epi32(inv.resources, inv.bots);
+                inv.bots = _mm_add_epi32(inv.bots, newBots);
+     //           cout << "    ...after finishing this minute: " << inv << endl;
+
+                if (minsRemaining > 1)
+                {
+                    vecI vecMinsRemaining = _mm_set1_epi32(minsRemaining - 1);
+                    vecI remainingResources = _mm_mul_epi32(inv.bots, vecMinsRemaining);
+                    inv.resources = _mm_add_epi32(inv.resources, remainingResources);
+    //                cout << "    ...after finishing remaining " << _mm_extract_epi32(vecMinsRemaining, 0) << " minute: " << inv << "\n";
+    //               cout << "    ...final geode lump was " << _mm_extract_epi32(remainingResources, 0) << endl;
+                }
                 break;
             }
 
-            maxBot = max(bot, maxBot);
+            ++step;
+            bot = Resource(planLeft & 3);
+            planLeft >>= 2;
         }
+  //      else
+  //          cout << "   *** couldn't build " << bot << endl;
 
         inv.resources = _mm_add_epi32(inv.resources, inv.bots);
         inv.bots = _mm_add_epi32(inv.bots, newBots);
     }
-
+   // cout << "\nfinal inventory: " << inv << endl;
     return inv.getNumGeodes();
 }
 
@@ -191,17 +231,12 @@ vector<BotPlan> generateAllPlans()
     static_assert(MaxLen < BotPlan::MaxPlanLen);
     TIME_SCOPE(generateAllPlans);
 
-    BotPlan curr = { 0 };
+    BotPlan curr;
     vector<BotPlan> plans;
+
+    //plans.push_back(BotPlan("abbbbbcbcccdccdcdd"));
+    
     plans.reserve(2'000'000'000);
-    /*
-    {
-        BotPlan kg;
-        kg.plan = 0xf995;
-        cout << "*** inserting known-good plan " << kg << endl;
-        plans.push_back(kg);
-    }
-    */
     for (int len = 5; len <= MaxLen; ++len)
     {
         for (Resource res=Ore; res <= Clay; res = Resource(res + 1))
@@ -210,9 +245,6 @@ vector<BotPlan> generateAllPlans()
             generateRestOfPlan(curr, 1, len, res, plans);
         }
     }
-
-//    if (ranges::find(plans, BotPlan{ 0xf995 }) == end(plans))
-//        throw "didn't generate knwon-good plan";
 
     return plans;
 }
@@ -233,14 +265,14 @@ int findBestPlan(const Blueprint& bp, const BotPlans& plans)
     };
 
     auto [maxGeodes,bestPlan] = transform_reduce(
-     //   execution::par_unseq,
+        execution::par_unseq,
         begin(plans), end(plans),
         GeodesPlanPair{0, nullptr},
         reduceMaxGeodes,
         countGeodes);
 
     if (maxGeodes > 0)
-        cout << "  BP " << bp.id << ": best result with plan '" << *bestPlan << "'\n";
+        cout << "  BP " << bp.id << ": best result " << maxGeodes << " with plan '" << *bestPlan << "'\n";
     else
         cout << "  BP " << bp.id << ": no viable plan !!!\n";
 
@@ -287,7 +319,7 @@ Blueprint 2: Each ore robot costs 2 ore. Each clay robot costs 3 ore. Each obsid
     {
         {
             auto plans = generateAllPlans<18>();
-            test(2, findBestPlan(Blueprint("Blueprint 12: Each ore robot costs 4 ore. Each clay robot costs 4 ore. Each obsidian robot costs 4 ore and 14 clay. Each geode robot costs 3 ore and 16 obsidian."), plans));
+            test(14, findBestPlan(Blueprint("Blueprint 24: Each ore robot costs 2 ore. Each clay robot costs 2 ore. Each obsidian robot costs 2 ore and 10 clay. Each geode robot costs 2 ore and 11 obsidian."), plans));
             test(9, findBestPlan(Blueprint("Blueprint 1: Each ore robot costs 4 ore. Each clay robot costs 2 ore. Each obsidian robot costs 3 ore and 14 clay. Each geode robot costs 2 ore and 7 obsidian."), plans));
             test(12, findBestPlan(Blueprint("Blueprint 2: Each ore robot costs 2 ore. Each clay robot costs 3 ore. Each obsidian robot costs 3 ore and 8 clay. Each geode robot costs 3 ore and 12 obsidian."), plans));
             test(33, day19(READ(sample), plans));
