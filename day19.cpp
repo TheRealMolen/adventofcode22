@@ -3,41 +3,61 @@
 
 #include <execution>
 
+#include <xmmintrin.h>
+#include <emmintrin.h>
+#include <smmintrin.h>
 
 enum Resource { Ore, Clay, Obsidian, Geode, ResourceTypeCount };
 
-struct Recipe
-{
+using vecI = __m128i;
 
-    int ore = 0;
-    int clay = 0;
-    int obsidian = 0;
-};
+const vecI VecOre       = _mm_set_epi32(1, 0, 0, 0);
+const vecI VecClay      = _mm_set_epi32(0, 1, 0, 0);
+const vecI VecObsidian  = _mm_set_epi32(0, 0, 1, 0);
+const vecI VecGeode     = _mm_set_epi32(0, 0, 0, 1);
+
+const vecI VecRes[ResourceTypeCount] = { VecOre, VecClay, VecObsidian, VecGeode };
+
+#define VecZero _mm_setzero_si128()
+
 struct Blueprint
 {
+    vecI bots[ResourceTypeCount];
     int id = 0;
-    Recipe oreBot;
-    Recipe clayBot;
-    Recipe obsidianBot;
-    Recipe geodeBot;
 
     explicit Blueprint(const string& line)
     {
         istringstream is(line);
 
+        int oreBotOre;
+        int clayBotOre;
+        int obsidianBotOre, obsidianBotClay;
+        int geodeBotOre, geodeBotObsidian;
+
         is >> "Blueprint " >> id >> ": "
-            "Each ore robot costs " >> oreBot.ore >> " ore. "
-            "Each clay robot costs " >> clayBot.ore >> " ore. "
-            "Each obsidian robot costs " >> obsidianBot.ore >> " ore and " >> obsidianBot.clay >> " clay. "
-            "Each geode robot costs " >> geodeBot.ore >> " ore and " >> geodeBot.obsidian >> " obsidian.";
+            "Each ore robot costs " >> oreBotOre >> " ore. "
+            "Each clay robot costs " >> clayBotOre >> " ore. "
+            "Each obsidian robot costs " >> obsidianBotOre >> " ore and " >> obsidianBotClay >> " clay. "
+            "Each geode robot costs " >> geodeBotOre >> " ore and " >> geodeBotObsidian >> " obsidian.";
+
+        bots[Ore] = _mm_set_epi32(oreBotOre, 0, 0, 0);
+        bots[Clay] = _mm_set_epi32(clayBotOre, 0, 0, 0);
+        bots[Obsidian] = _mm_set_epi32(obsidianBotOre, obsidianBotClay, 0, 0);
+        bots[Geode] = _mm_set_epi32(geodeBotOre, 0, geodeBotObsidian, 0);
     }
 };
 
-struct Inventory : Recipe
+struct Inventory
 {
-    int bots[ResourceTypeCount] = { 1,0,0,0 };
+    vecI resources;   // in order as Resource enum
+    vecI bots;
+
+    Inventory() : resources(VecZero), bots(VecOre) { /**/ }
     
-    int geodes = 0;
+    int getNumGeodes() const
+    {
+        return _mm_extract_epi32(resources, 0/*Geode*/);    // NB. _mm_set_epi32 loads in reverse order
+    }
 };
 
 
@@ -82,46 +102,21 @@ ostream& operator<<(ostream& os, const BotPlan& plan)
 }
 
 
-Resource tryBuildBot(const BotPlan& plan, u32 step, Inventory& inv, const Blueprint& bp)
+vecI tryBuildBot(const BotPlan& plan, u32& step, Inventory& inv, const Blueprint& bp)
 {
-    switch (plan.getStep(step))
+    Resource bot = plan.getStep(step);
+    if (u32(bot) < ResourceTypeCount)
     {
-    case Ore:
-        if (inv.ore >= bp.oreBot.ore)
+        vecI unsatisfied = _mm_cmplt_epi32(inv.resources, bp.bots[bot]);
+        if (_mm_testz_si128(unsatisfied, unsatisfied))
         {
-            inv.ore -= bp.oreBot.ore;
-            return Ore;
+            inv.resources = _mm_sub_epi32(inv.resources, bp.bots[bot]);
+            ++step;
+            return VecRes[bot];
         }
-        break;
-
-    case Clay:
-        if (inv.ore >= bp.clayBot.ore)
-        {
-            inv.ore -= bp.clayBot.ore;
-            return Clay;
-        }
-        break;
-
-    case Obsidian:
-        if (inv.ore >= bp.obsidianBot.ore && inv.clay >= bp.obsidianBot.clay)
-        {
-            inv.ore -= bp.obsidianBot.ore;
-            inv.clay -= bp.obsidianBot.clay;
-            return Obsidian;
-        }
-        break;
-
-    case Geode:
-        if (inv.ore >= bp.geodeBot.ore && inv.obsidian >= bp.geodeBot.obsidian)
-        {
-            inv.ore -= bp.geodeBot.ore;
-            inv.obsidian -= bp.geodeBot.obsidian;
-            return Geode;
-        }
-        break;
     }
 
-    return ResourceTypeCount;
+    return _mm_setzero_si128();
 }
 
 template<int MaxMinutes = 25>
@@ -133,26 +128,17 @@ int runPlan(const Blueprint& bp, const BotPlan& plan)
     {
         if (step < plan.len)
         {
-            Resource newBot = tryBuildBot(plan, step, inv, bp);
-
-            inv.ore += inv.bots[Ore];
-            inv.clay += inv.bots[Clay];
-            inv.obsidian += inv.bots[Obsidian];
-            inv.geodes += inv.bots[Geode];
-
-            if (u32(newBot) < ResourceTypeCount)
-            {
-                ++inv.bots[newBot];
-                ++step;
-            }
+            vecI newBots = tryBuildBot(plan, step, inv, bp);
+            inv.resources = _mm_add_epi32(inv.resources, inv.bots);
+            inv.bots = _mm_add_epi32(inv.bots, newBots);
         }
         else
         {
-            inv.geodes += inv.bots[Geode];
+            inv.resources = _mm_add_epi32(inv.resources, inv.bots);
         }
     }
 
-    return inv.geodes;
+    return inv.getNumGeodes();
 }
 
 
@@ -161,7 +147,7 @@ int runPlan(const Blueprint& bp, const BotPlan& plan)
 // no Geode before Obsidian
 void generateRestOfPlan(BotPlan& curr, int i, int len, Resource maxBotBuilt, BotPlans& plans)
 {
-    if (i >= len - 1) [[unlikely]]
+    if (i >= len - 1)
     {
         plans.push_back(curr);
     }
@@ -207,6 +193,7 @@ template<int MaxLen>
 vector<BotPlan> generateAllPlans()
 {
     static_assert(MaxLen < BotPlan::MaxPlanLen);
+    TIME_SCOPE(generateAllPlans);
 
     BotPlan curr = { 0 };
     vector<BotPlan> plans;
@@ -258,6 +245,8 @@ int findBestPlan(const Blueprint& bp, const BotPlans& plans)
 
 int day19(const stringlist& input, const BotPlans& plans)
 {
+    TIME_SCOPE(day19_exec);
+
     int totalQuality = 0;
     for (auto& line : input)
     {
@@ -270,6 +259,8 @@ int day19(const stringlist& input, const BotPlans& plans)
 
 int day19_2(const stringlist& input, const BotPlans& plans)
 {
+    TIME_SCOPE(day19_2_exec);
+
     int res = 1;
     for (auto& line : input | views::take(3))
     {
@@ -287,7 +278,7 @@ void run_day19()
 R"(Blueprint 1: Each ore robot costs 4 ore. Each clay robot costs 2 ore. Each obsidian robot costs 3 ore and 14 clay. Each geode robot costs 2 ore and 7 obsidian.
 Blueprint 2: Each ore robot costs 2 ore. Each clay robot costs 3 ore. Each obsidian robot costs 3 ore and 8 clay. Each geode robot costs 3 ore and 12 obsidian.)";
 
-    if constexpr (false)
+    if constexpr (true)
     {
         {
             auto plans = generateAllPlans<18>();

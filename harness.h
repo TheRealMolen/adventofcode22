@@ -284,7 +284,6 @@ inline auto erase_unsorted(auto& container, auto it)
     return it;
 }
 
-
 // ----- profiling -----
 class ScopeTimer
 {
@@ -299,7 +298,9 @@ public:
     {
         const auto end = chrono::high_resolution_clock::now();
         const auto duration_ns = chrono::duration_cast<chrono::nanoseconds>(end - m_start).count();
+        cout.imbue(locale(""));
         cout << m_name << " took " << duration_ns / 1000 << "us" << endl;
+        cout.imbue(locale::classic());
     }
 };
 #define TIME_SCOPE(name)    ScopeTimer timer_##name(#name)
