@@ -58,7 +58,7 @@ int main()
     run_day16();
     run_day17();
     run_day18();
-    //run_day19();
+    run_day19();
     //run_day20();
     //run_day21();
     //run_day22();
